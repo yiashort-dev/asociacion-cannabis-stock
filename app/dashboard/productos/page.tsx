@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Product {
-  id: string
+  id: number
   name: string
   description: string
   unit: string
-  price_purchase: number
-  price_sale: number
-  stock_current: number
+  cost_price: number
+  sale_price: number
+  stock_actual: number
   stock_min: number
   active: boolean
 }
@@ -21,10 +21,10 @@ function exportCSV(products: Product[]) {
       p.name,
       p.description || '',
       p.unit,
-      String(p.stock_current),
+      String(p.stock_actual),
       String(p.stock_min || 0),
-      p.price_purchase?.toFixed(2) || '0',
-      p.price_sale?.toFixed(2) || '0',
+      p.cost_price?.toFixed(2) || '0',
+      p.sale_price?.toFixed(2) || '0',
       p.active ? 'Activo' : 'Inactivo'
     ])
   })
@@ -42,8 +42,8 @@ export default function ProductosPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', unit: 'g', price_purchase: '', price_sale: '', stock_min: '10' })
+  const [editId, setEditId] = useState<number | null>(null)
+  const [form, setForm] = useState({ name: '', description: '', unit: 'g', cost_price: '', sale_price: '', stock_min: '10' })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [filter, setFilter] = useState('')
@@ -64,8 +64,8 @@ export default function ProductosPage() {
       name: p.name,
       description: p.description || '',
       unit: p.unit,
-      price_purchase: String(p.price_purchase || ''),
-      price_sale: String(p.price_sale || ''),
+      cost_price: String(p.cost_price || ''),
+      sale_price: String(p.sale_price || ''),
       stock_min: String(p.stock_min || 10)
     })
     setShowForm(true)
@@ -74,7 +74,7 @@ export default function ProductosPage() {
   function cancelForm() {
     setShowForm(false)
     setEditId(null)
-    setForm({ name: '', description: '', unit: 'g', price_purchase: '', price_sale: '', stock_min: '10' })
+    setForm({ name: '', description: '', unit: 'g', cost_price: '', sale_price: '', stock_min: '10' })
     setMsg('')
   }
 
@@ -87,8 +87,8 @@ export default function ProductosPage() {
       name: form.name,
       description: form.description,
       unit: form.unit,
-      price_purchase: parseFloat(form.price_purchase) || 0,
-      price_sale: parseFloat(form.price_sale) || 0,
+      cost_price: parseFloat(form.cost_price) || 0,
+      sale_price: parseFloat(form.sale_price) || 0,
       stock_min: parseInt(form.stock_min) || 10
     }
     if (editId) {
@@ -96,7 +96,7 @@ export default function ProductosPage() {
       if (error) { setMsg('Error: ' + error.message); setSaving(false); return }
       setMsg('Producto actualizado')
     } else {
-      const { error } = await supabase.from('products').insert({ ...payload, stock_current: 0, active: true })
+      const { error } = await supabase.from('products').insert({ ...payload, stock_actual: 0, active: true })
       if (error) { setMsg('Error: ' + error.message); setSaving(false); return }
       setMsg('Producto creado')
     }
@@ -148,11 +148,11 @@ export default function ProductosPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Precio Compra (EUR)</label>
-              <input type="number" value={form.price_purchase} onChange={e => setForm({...form, price_purchase: e.target.value})} className="w-full border rounded-lg p-2 text-sm" min="0" step="0.01" />
+              <input type="number" value={form.cost_price} onChange={e => setForm({...form, cost_price: e.target.value})} className="w-full border rounded-lg p-2 text-sm" min="0" step="0.01" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Precio Venta (EUR)</label>
-              <input type="number" value={form.price_sale} onChange={e => setForm({...form, price_sale: e.target.value})} className="w-full border rounded-lg p-2 text-sm" min="0" step="0.01" />
+              <input type="number" value={form.sale_price} onChange={e => setForm({...form, sale_price: e.target.value})} className="w-full border rounded-lg p-2 text-sm" min="0" step="0.01" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Stock Minimo</label>
@@ -204,13 +204,13 @@ export default function ProductosPage() {
                     {p.description && <div className="text-xs text-gray-400">{p.description}</div>}
                   </td>
                   <td className="p-3 text-center">
-                    <span className={`font-bold ${p.stock_current <= (p.stock_min || 10) ? 'text-red-600' : 'text-gray-800'}`}>
-                      {p.stock_current}{p.unit}
+                    <span className={`font-bold ${p.stock_actual <= (p.stock_min || 10) ? 'text-red-600' : 'text-gray-800'}`}>
+                      {p.stock_actual}{p.unit}
                     </span>
                   </td>
                   <td className="p-3 text-center text-gray-400">{p.stock_min || 10}{p.unit}</td>
-                  <td className="p-3 text-right text-gray-600">{p.price_purchase?.toFixed(2)} EUR</td>
-                  <td className="p-3 text-right text-green-700 font-medium">{p.price_sale?.toFixed(2)} EUR</td>
+                  <td className="p-3 text-right text-gray-600">{p.cost_price?.toFixed(2)} EUR</td>
+                  <td className="p-3 text-right text-green-700 font-medium">{p.sale_price?.toFixed(2)} EUR</td>
                   <td className="p-3 text-center">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {p.active ? 'Activo' : 'Inactivo'}
