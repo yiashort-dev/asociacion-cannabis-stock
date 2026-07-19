@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 interface Product {
@@ -9,7 +9,6 @@ interface Product {
 }
 
 export default function StockPage() {
-  const supabase = createClientComponentClient()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
@@ -69,22 +68,17 @@ export default function StockPage() {
             <div className="text-2xl font-bold">{products.filter(p => p.active).length}</div>
           </div>
           <div className="bg-white rounded-xl shadow p-4">
-            <div className="text-sm text-gray-500">Valor total en stock (compra)</div>
+            <div className="text-sm text-gray-500">Valor total en stock</div>
             <div className="text-2xl font-bold text-green-700">{totalValue.toFixed(2)}€</div>
           </div>
           <div className={`bg-white rounded-xl shadow p-4 ${lowStockCount > 0 ? 'border-l-4 border-red-500' : ''}`}>
-            <div className="text-sm text-gray-500">Stock bajo (≤10 unidades)</div>
+            <div className="text-sm text-gray-500">Stock bajo (≤10)</div>
             <div className={`text-2xl font-bold ${lowStockCount > 0 ? 'text-red-600' : 'text-gray-800'}`}>{lowStockCount}</div>
           </div>
         </div>
 
         <div className="flex gap-4 mb-4">
-          <input
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Buscar producto..."
-            className="flex-1 border rounded px-3 py-2"
-          />
+          <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar producto..." className="flex-1 border rounded px-3 py-2" />
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={showLowStock} onChange={e => setShowLowStock(e.target.checked)} className="w-4 h-4" />
             <span className="text-sm font-medium text-red-600">Solo stock bajo</span>
@@ -103,7 +97,7 @@ export default function StockPage() {
                   <th className="text-right px-4 py-3">Stock Actual</th>
                   <th className="text-right px-4 py-3">P. Compra</th>
                   <th className="text-right px-4 py-3">P. Venta</th>
-                  <th className="text-right px-4 py-3">Valor Stock</th>
+                  <th className="text-right px-4 py-3">Valor</th>
                   <th className="text-center px-4 py-3">Estado</th>
                 </tr>
               </thead>
@@ -114,7 +108,6 @@ export default function StockPage() {
                     <td className="text-center px-4 py-3 text-gray-500">{p.unit}</td>
                     <td className={`text-right px-4 py-3 font-mono font-bold ${p.stock_current <= 10 ? 'text-red-600' : p.stock_current <= 50 ? 'text-yellow-600' : 'text-green-700'}`}>
                       {p.stock_current}
-                      {p.stock_current <= 10 && p.active && <span className="ml-1 text-xs">⚠️</span>}
                     </td>
                     <td className="text-right px-4 py-3">{p.price_purchase?.toFixed(2)}€</td>
                     <td className="text-right px-4 py-3">{p.price_sale?.toFixed(2)}€</td>
@@ -126,9 +119,7 @@ export default function StockPage() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-8 text-gray-400">No hay productos</td></tr>
-                )}
+                {filtered.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-gray-400">No hay productos</td></tr>}
               </tbody>
             </table>
           </div>
