@@ -3,22 +3,24 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Purchase {
-  id: string
-  date: string
+  id: number
+  purchase_date: string
   notes: string
-  total: number
+  total_cost: number
   supplier: string
+  status: string
   purchase_items?: { quantity: number; unit_price: number; products: { name: string } }[]
 }
 
 function exportCSV(purchases: Purchase[]) {
-  const rows = [['ID', 'Fecha', 'Proveedor', 'Total EUR', 'Notas']]
+  const rows = [['ID', 'Fecha', 'Proveedor', 'Total EUR', 'Estado', 'Notas']]
   purchases.forEach(p => {
     rows.push([
-      p.id.slice(0,8),
-      p.date,
+      String(p.id),
+      p.purchase_date,
       p.supplier || '',
-      p.total?.toFixed(2) || '0',
+      p.total_cost?.toFixed(2) || '0',
+      p.status || '',
       p.notes || ''
     ])
   })
@@ -34,10 +36,10 @@ function exportCSV(purchases: Purchase[]) {
 
 export default function ComprasPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [products, setProducts] = useState<{id: string; name: string; unit: string; stock_current: number}[]>([])
+  const [products, setProducts] = useState<{id: number; name: string; unit: string; stock_actual: number}[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ supplier: '', notes: '', date: new Date().toISOString().split('T')[0] })
+  const [form, setForm] = useState({ supplier: '', notes: '', purchase_date: new Date().toISOString().split('T')[0] })
   const [items, setItems] = useState([{ product_id: '', quantity: '', unit_price: '' }])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -48,8 +50,8 @@ export default function ComprasPage() {
   async function loadAll() {
     setLoading(true)
     const [{ data: p }, { data: pr }] = await Promise.all([
-      supabase.from('purchases').select('*, purchase_items(quantity, unit_price, products(name))').order('date', { ascending: false }).limit(100),
-      supabase.from('products').select('id, name, unit, stock_current').eq('active', true).order('name')
+      supabase.from('purchases').select('*, purchase_items(quantity, unit_price, products(name))').order('purchase_date', { ascending: false }).limit(100),
+      supabase.from('products').select('id, name, unit, stock_actual').eq('active', true).order('name')
     ])
     setPurchases(p || [])
     setProducts(pr || [])
@@ -70,17 +72,27 @@ export default function ComprasPage() {
     if (!validItems.length) { setMsg('Agrega al menos un producto'); return }
     setSaving(true)
     setMsg('')
-    const total = validItems.reduce((s, i) => s + parseFloat(i.quantity) * parseFloat(i.unit_price), 0)
-    const { data: purchase, error } = await supabase.from('purchases').insert({ ...form, total }).select().single()
+    const total_cost = validItems.reduce((s, i) => s + parseFloat(i.quantity) * parseFloat(i.unit_price), 0)
+    const { data: purchase, error } = await supabase.from('purchases').insert({ 
+      ...form, 
+      total_cost,
+      status: 'completada'
+    }).select().single()
     if (error || !purchase) { setMsg('Error: ' + error?.message); setSaving(false); return }
-    const purchaseItems = validItems.map(i => ({ purchase_id: purchase.id, product_id: i.product_id, quantity: parseFloat(i.quantity), unit_price: parseFloat(i.unit_price) }))
+    const purchaseItems = validItems.map(i => ({ 
+      purchase_id: purchase.id, 
+      product_id: parseInt(i.product_id), 
+      quantity: parseFloat(i.quantity), 
+      unit_price: parseFloat(i.unit_price),
+      subtotal: parseFloat(i.quantity) * parseFloat(i.unit_price)
+    }))
     await supabase.from('purchase_items').insert(purchaseItems)
     for (const i of validItems) {
-      const prod = products.find(p => p.id === i.product_id)
-      if (prod) await supabase.from('products').update({ stock_current: prod.stock_current + parseFloat(i.quantity) }).eq('id', i.product_id)
+      const prod = products.find(p => p.id === parseInt(i.product_id))
+      if (prod) await supabase.from('products').update({ stock_actual: prod.stock_actual + parseFloat(i.quantity) }).eq('id', prod.id)
     }
     setMsg('Compra registrada correctamente')
-    setForm({ supplier: '', notes: '', date: new Date().toISOString().split('T')[0] })
+    setForm({ supplier: '', notes: '', purchase_date: new Date().toISOString().split('T')[0] })
     setItems([{ product_id: '', quantity: '', unit_price: '' }])
     setShowForm(false)
     setSaving(false)
@@ -90,7 +102,7 @@ export default function ComprasPage() {
   const filtered = purchases.filter(p =>
     !filter ||
     p.supplier?.toLowerCase().includes(filter.toLowerCase()) ||
-    p.date?.includes(filter)
+    p.purchase_date?.includes(filter)
   )
 
   return (
@@ -117,7 +129,7 @@ export default function ComprasPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-              <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input type="date" value={form.purchase_date} onChange={e => setForm({...form, purchase_date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
@@ -171,10 +183,10 @@ export default function ComprasPage() {
             <tbody>
               {filtered.map(p => (
                 <tr key={p.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 text-gray-700">{p.date}</td>
+                  <td className="p-3 text-gray-700">{p.purchase_date}</td>
                   <td className="p-3 text-gray-700">{p.supplier || '-'}</td>
                   <td className="p-3 text-gray-500 text-xs">{p.purchase_items?.map(i => `${i.quantity}x ${i.products?.name}`).join(', ') || '-'}</td>
-                  <td className="p-3 text-right font-semibold text-blue-700">{p.total?.toFixed(2)} EUR</td>
+                  <td className="p-3 text-right font-semibold text-blue-700">{p.total_cost?.toFixed(2)} EUR</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
