@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 interface Sale {
@@ -10,7 +10,6 @@ interface Sale {
 }
 
 export default function VentasPage() {
-  const supabase = createClientComponentClient()
   const [sales, setSales] = useState<Sale[]>([])
   const [products, setProducts] = useState<{id: string; name: string; unit: string; stock_current: number; price_sale: number}[]>([])
   const [persons, setPersons] = useState<{id: string; full_name: string}[]>([])
@@ -122,8 +121,8 @@ export default function VentasPage() {
                   <th className="text-left px-3 py-2">Producto</th>
                   <th className="text-right px-3 py-2">Disponible</th>
                   <th className="text-right px-3 py-2">Cantidad</th>
-                  <th className="text-right px-3 py-2">Precio unit. (€)</th>
-                  <th className="px-3 py-2"></th>
+                  <th className="text-right px-3 py-2">Precio (€)</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -137,15 +136,15 @@ export default function VentasPage() {
                           {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </td>
-                      <td className="px-3 py-2 text-right text-sm text-gray-500">{prod ? `${prod.stock_current}${prod.unit}` : '-'}</td>
+                      <td className="px-3 py-2 text-right text-gray-500 text-sm">{prod ? `${prod.stock_current}${prod.unit}` : '-'}</td>
                       <td className="px-3 py-2">
-                        <input type="number" step="0.01" max={prod?.stock_current} value={item.quantity} onChange={e => updateItem(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-1 text-right" placeholder="0" />
+                        <input type="number" step="0.01" value={item.quantity} onChange={e => updateItem(i, 'quantity', e.target.value)} className="w-full border rounded px-2 py-1 text-right" placeholder="0" />
                       </td>
                       <td className="px-3 py-2">
                         <input type="number" step="0.01" value={item.unit_price} onChange={e => updateItem(i, 'unit_price', e.target.value)} className="w-full border rounded px-2 py-1 text-right" placeholder="0" />
                       </td>
                       <td className="px-3 py-2 text-center">
-                        {items.length > 1 && <button type="button" onClick={() => removeItem(i)} className="text-red-500 hover:text-red-700">✕</button>}
+                        {items.length > 1 && <button type="button" onClick={() => removeItem(i)} className="text-red-500">✕</button>}
                       </td>
                     </tr>
                   )
@@ -178,7 +177,7 @@ export default function VentasPage() {
                 {sales.map(s => (
                   <tr key={s.id} className="border-t hover:bg-gray-50">
                     <td className="px-4 py-3">{new Date(s.date).toLocaleDateString('es-ES')}</td>
-                    <td className="px-4 py-3">{s.persons?.full_name || <span className="text-gray-400">-</span>}</td>
+                    <td className="px-4 py-3">{s.persons?.full_name || '-'}</td>
                     <td className="px-4 py-3 text-xs">{s.sale_items?.map(i => `${i.products?.name} x${i.quantity}`).join(', ')}</td>
                     <td className="text-right px-4 py-3 font-semibold">{s.total?.toFixed(2)}€</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{s.notes}</td>
