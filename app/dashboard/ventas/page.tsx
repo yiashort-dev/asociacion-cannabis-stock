@@ -3,22 +3,26 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Sale {
-  id: string
-  date: string
+  id: number
+  sale_date: string
   notes: string
-  total: number
+  total_amount: number
+  payment_method: string
+  status: string
   persons?: { full_name: string }
   sale_items?: { quantity: number; unit_price: number; products: { name: string } }[]
 }
 
 function exportCSV(sales: Sale[]) {
-  const rows = [['ID', 'Fecha', 'Socio', 'Total EUR', 'Notas']]
+  const rows = [['ID', 'Fecha', 'Socio', 'Total EUR', 'Metodo Pago', 'Estado', 'Notas']]
   sales.forEach(s => {
     rows.push([
-      s.id.slice(0,8),
-      s.date,
+      String(s.id),
+      s.sale_date,
       s.persons?.full_name || '',
-      s.total?.toFixed(2) || '0',
+      s.total_amount?.toFixed(2) || '0',
+      s.payment_method || '',
+      s.status || '',
       s.notes || ''
     ])
   })
@@ -34,11 +38,11 @@ function exportCSV(sales: Sale[]) {
 
 export default function VentasPage() {
   const [sales, setSales] = useState<Sale[]>([])
-  const [products, setProducts] = useState<{id: string; name: string; unit: string; stock_current: number; price_sale: number}[]>([])
-  const [persons, setPersons] = useState<{id: string; full_name: string}[]>([])
+  const [products, setProducts] = useState<{id: number; name: string; unit: string; stock_actual: number; sale_price: number}[]>([])
+  const [persons, setPersons] = useState<{id: number; full_name: string}[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ person_id: '', notes: '', date: new Date().toISOString().split('T')[0] })
+  const [form, setForm] = useState({ person_id: '', notes: '', sale_date: new Date().toISOString().split('T')[0], payment_method: 'efectivo' })
   const [items, setItems] = useState([{ product_id: '', quantity: '', unit_price: '' }])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -49,8 +53,8 @@ export default function VentasPage() {
   async function loadAll() {
     setLoading(true)
     const [{ data: s }, { data: pr }, { data: pers }] = await Promise.all([
-      supabase.from('sales').select('*, persons(full_name), sale_items(quantity, unit_price, products(name))').order('date', { ascending: false }).limit(100),
-      supabase.from('products').select('id, name, unit, stock_current, price_sale').eq('active', true).order('name'),
+      supabase.from('sales').select('*, persons(full_name), sale_items(quantity, unit_price, products(name))').order('sale_date', { ascending: false }).limit(100),
+      supabase.from('products').select('id, name, unit, stock_actual, sale_price').eq('active', true).order('name'),
       supabase.from('persons').select('id, full_name').eq('active', true).order('full_name')
     ])
     setSales(s || [])
@@ -64,8 +68,8 @@ export default function VentasPage() {
   function updateItem(i: number, field: string, value: string) {
     const newItems = [...items]
     if (field === 'product_id') {
-      const prod = products.find(p => p.id === value)
-      newItems[i] = { ...newItems[i], product_id: value, unit_price: prod ? String(prod.price_sale) : '' }
+      const prod = products.find(p => p.id === parseInt(value))
+      newItems[i] = { ...newItems[i], product_id: value, unit_price: prod ? String(prod.sale_price) : '' }
     } else {
       newItems[i] = { ...newItems[i], [field]: value }
     }
@@ -79,17 +83,30 @@ export default function VentasPage() {
     if (!validItems.length) { setMsg('Agrega al menos un producto'); return }
     setSaving(true)
     setMsg('')
-    const total = validItems.reduce((s, i) => s + parseFloat(i.quantity) * parseFloat(i.unit_price), 0)
-    const { data: sale, error } = await supabase.from('sales').insert({ ...form, total }).select().single()
+    const total_amount = validItems.reduce((s, i) => s + parseFloat(i.quantity) * parseFloat(i.unit_price), 0)
+    const { data: sale, error } = await supabase.from('sales').insert({ 
+      person_id: parseInt(form.person_id), 
+      notes: form.notes, 
+      sale_date: form.sale_date, 
+      payment_method: form.payment_method,
+      total_amount,
+      status: 'completada'
+    }).select().single()
     if (error || !sale) { setMsg('Error: ' + error?.message); setSaving(false); return }
-    const saleItems = validItems.map(i => ({ sale_id: sale.id, product_id: i.product_id, quantity: parseFloat(i.quantity), unit_price: parseFloat(i.unit_price) }))
+    const saleItems = validItems.map(i => ({ 
+      sale_id: sale.id, 
+      product_id: parseInt(i.product_id), 
+      quantity: parseFloat(i.quantity), 
+      unit_price: parseFloat(i.unit_price),
+      subtotal: parseFloat(i.quantity) * parseFloat(i.unit_price)
+    }))
     await supabase.from('sale_items').insert(saleItems)
     for (const i of validItems) {
-      const prod = products.find(p => p.id === i.product_id)
-      if (prod) await supabase.from('products').update({ stock_current: prod.stock_current - parseFloat(i.quantity) }).eq('id', i.product_id)
+      const prod = products.find(p => p.id === parseInt(i.product_id))
+      if (prod) await supabase.from('products').update({ stock_actual: prod.stock_actual - parseFloat(i.quantity) }).eq('id', prod.id)
     }
     setMsg('Venta registrada correctamente')
-    setForm({ person_id: '', notes: '', date: new Date().toISOString().split('T')[0] })
+    setForm({ person_id: '', notes: '', sale_date: new Date().toISOString().split('T')[0], payment_method: 'efectivo' })
     setItems([{ product_id: '', quantity: '', unit_price: '' }])
     setShowForm(false)
     setSaving(false)
@@ -99,7 +116,7 @@ export default function VentasPage() {
   const filtered = sales.filter(s =>
     !filter ||
     s.persons?.full_name?.toLowerCase().includes(filter.toLowerCase()) ||
-    s.date?.includes(filter)
+    s.sale_date?.includes(filter)
   )
 
   return (
@@ -119,7 +136,7 @@ export default function VentasPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow mb-6">
           <h2 className="text-lg font-semibold mb-4">Nueva Venta</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Socio *</label>
               <select value={form.person_id} onChange={e => setForm({...form, person_id: e.target.value})} className="w-full border rounded-lg p-2 text-sm" required>
@@ -129,7 +146,15 @@ export default function VentasPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-              <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input type="date" value={form.sale_date} onChange={e => setForm({...form, sale_date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Metodo de pago</label>
+              <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="cuota">Cuota</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
@@ -145,7 +170,7 @@ export default function VentasPage() {
               <div key={i} className="grid grid-cols-4 gap-2 mb-2">
                 <select value={item.product_id} onChange={e => updateItem(i, 'product_id', e.target.value)} className="border rounded-lg p-2 text-sm col-span-2">
                   <option value="">Producto...</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.stock_current}{p.unit})</option>)}
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name} (stock: {p.stock_actual}{p.unit})</option>)}
                 </select>
                 <input type="number" placeholder="Cantidad" value={item.quantity} onChange={e => updateItem(i, 'quantity', e.target.value)} className="border rounded-lg p-2 text-sm" min="0" step="0.1" />
                 <div className="flex gap-1">
@@ -177,20 +202,22 @@ export default function VentasPage() {
                 <th className="text-left p-3 text-gray-600">Fecha</th>
                 <th className="text-left p-3 text-gray-600">Socio</th>
                 <th className="text-left p-3 text-gray-600">Productos</th>
+                <th className="text-left p-3 text-gray-600">Pago</th>
                 <th className="text-right p-3 text-gray-600">Total</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(s => (
                 <tr key={s.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 text-gray-700">{s.date}</td>
+                  <td className="p-3 text-gray-700">{s.sale_date}</td>
                   <td className="p-3 text-gray-700">{s.persons?.full_name || '-'}</td>
                   <td className="p-3 text-gray-500 text-xs">{s.sale_items?.map(i => `${i.quantity}x ${i.products?.name}`).join(', ') || '-'}</td>
-                  <td className="p-3 text-right font-semibold text-green-700">{s.total?.toFixed(2)} EUR</td>
+                  <td className="p-3 text-gray-500 text-xs capitalize">{s.payment_method || '-'}</td>
+                  <td className="p-3 text-right font-semibold text-green-700">{s.total_amount?.toFixed(2)} EUR</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={4} className="p-8 text-center text-gray-400">Sin ventas registradas</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">Sin ventas registradas</td></tr>
               )}
             </tbody>
           </table>
