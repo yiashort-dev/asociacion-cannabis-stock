@@ -19,179 +19,144 @@ export default function Dashboard() {
     totalProductos: 0, stockTotal: 0, ventasHoy: 0,
     comprasHoy: 0, productosBajos: 0, totalPersonas: 0
   })
-  const [productos, setProductos] = useState<any[]>([])
-  const [movimientos, setMovimientos] = useState<any[]>([])
-  const [user, setUser] = useState<any>(null)
+  const [lowProducts, setLowProducts] = useState<{name: string; stock_current: number; unit: string}[]>([])
   const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<{email: string} | null>(null)
 
   useEffect(() => {
-    checkUser()
-    loadData()
+    checkAuth()
+    loadStats()
   }, [])
 
-  const checkUser = async () => {
+  async function checkAuth() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/'); return }
-    setUser(user)
+    setUser({ email: user.email || '' })
   }
 
-  const loadData = async () => {
+  async function loadStats() {
+    setLoading(true)
     const today = new Date().toISOString().split('T')[0]
-
-    const [{ data: prods }, { data: ventas }, { data: compras }, { data: personas }, { data: movs }] = await Promise.all([
-      supabase.from('products').select('*').eq('active', true),
-      supabase.from('sales').select('total_amount').eq('sale_date', today).eq('status', 'active'),
-      supabase.from('purchases').select('total_cost').eq('purchase_date', today).eq('status', 'active'),
-      supabase.from('persons').select('id').eq('active', true),
-      supabase.from('stock_movements').select('*, products(name)').order('created_at', { ascending: false }).limit(8)
+    const [{ data: products }, { data: ventas }, { data: compras }, { data: persons }] = await Promise.all([
+      supabase.from('products').select('name, stock_current, unit, active'),
+      supabase.from('sales').select('total').gte('date', today),
+      supabase.from('purchases').select('total').gte('date', today),
+      supabase.from('persons').select('id').eq('active', true)
     ])
-
-    const prods_ = prods || []
-    setProductos(prods_.filter((p: any) => p.stock_actual <= p.stock_min).slice(0, 5))
-    setMovimientos(movs || [])
+    const activeProducts = (products || []).filter(p => p.active)
+    const low = (products || []).filter(p => p.stock_current <= 10 && p.active)
+    setLowProducts(low)
     setStats({
-      totalProductos: prods_.length,
-      stockTotal: prods_.reduce((a: number, p: any) => a + Number(p.stock_actual), 0),
-      ventasHoy: (ventas || []).reduce((a: number, v: any) => a + Number(v.total_amount), 0),
-      comprasHoy: (compras || []).reduce((a: number, c: any) => a + Number(c.total_cost), 0),
-      productosBajos: prods_.filter((p: any) => p.stock_actual <= p.stock_min).length,
-      totalPersonas: (personas || []).length
+      totalProductos: activeProducts.length,
+      stockTotal: activeProducts.reduce((s, p) => s + p.stock_current, 0),
+      ventasHoy: (ventas || []).reduce((s, v) => s + (v.total || 0), 0),
+      comprasHoy: (compras || []).reduce((s, c) => s + (c.total || 0), 0),
+      productosBajos: low.length,
+      totalPersonas: (persons || []).length
     })
     setLoading(false)
   }
 
-  const handleLogout = async () => {
+  async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/')
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-green-600 text-lg font-medium">Cargando...</div></div>
+  const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 shadow-sm z-10">
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-xl">🌿</span>
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-900 text-sm">Asociacion Stock</h2>
-              <p className="text-xs text-gray-500">{user?.email}</p>
-            </div>
-          </div>
+      <aside className="w-56 bg-green-900 text-white flex flex-col">
+        <div className="p-5 border-b border-green-700">
+          <div className="text-xl font-bold">Asociacion</div>
+          <div className="text-green-300 text-xs mt-1">Gestion Interna</div>
         </div>
-        <nav className="p-4 space-y-1">
-          <Link href="/dashboard" className="sidebar-link active">🏠 Dashboard</Link>
-          <Link href="/dashboard/productos" className="sidebar-link">🌿 Productos</Link>
-          <Link href="/dashboard/personas" className="sidebar-link">👥 Personas</Link>
-          <Link href="/dashboard/compras" className="sidebar-link">📦 Compras</Link>
-          <Link href="/dashboard/ventas" className="sidebar-link">💰 Ventas</Link>
-          <Link href="/dashboard/stock" className="sidebar-link">📊 Stock</Link>
-          <Link href="/dashboard/movimientos" className="sidebar-link">🔄 Movimientos</Link>
+        <nav className="flex-1 p-4 space-y-1">
+          <Link href="/dashboard" className="flex items-center gap-3 px-3 py-2 rounded-lg bg-green-800 text-white text-sm font-medium">Dashboard</Link>
+          <Link href="/dashboard/productos" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-800 text-green-100 text-sm">Productos</Link>
+          <Link href="/dashboard/compras" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-800 text-green-100 text-sm">Compras</Link>
+          <Link href="/dashboard/ventas" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-800 text-green-100 text-sm">Ventas</Link>
+          <Link href="/dashboard/stock" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-800 text-green-100 text-sm">Stock</Link>
+          <Link href="/dashboard/personas" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-green-800 text-green-100 text-sm">Personas</Link>
         </nav>
-        <div className="absolute bottom-4 left-4 right-4">
-          <button onClick={handleLogout} className="btn-danger w-full text-sm">🚪 Cerrar sesion</button>
+        <div className="p-4 border-t border-green-700">
+          {user && <div className="text-green-300 text-xs mb-2 truncate">{user.email}</div>}
+          <button onClick={handleLogout} className="w-full text-left text-sm text-green-200 hover:text-white py-1">Cerrar sesion</button>
         </div>
-      </div>
+      </aside>
 
       {/* Main */}
-      <div className="ml-64 p-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 text-sm">{new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+      <main className="flex-1 p-6 overflow-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <p className="text-gray-500 capitalize">{today}</p>
         </div>
 
-        {/* Metricas */}
-        <div className="grid grid-cols-3 gap-6 mb-8">
-          <div className="card">
-            <p className="text-sm text-gray-500">Stock Total (g)</p>
-            <p className="text-3xl font-bold text-green-600 mt-1">{stats.stockTotal.toFixed(0)}</p>
-            <p className="text-xs text-gray-400 mt-1">{stats.totalProductos} productos activos</p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-500">Ventas Hoy</p>
-            <p className="text-3xl font-bold text-blue-600 mt-1">{stats.ventasHoy.toFixed(2)} EUR</p>
-            <p className="text-xs text-gray-400 mt-1">Total del dia</p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-500">Compras Hoy</p>
-            <p className="text-3xl font-bold text-purple-600 mt-1">{stats.comprasHoy.toFixed(2)} EUR</p>
-            <p className="text-xs text-gray-400 mt-1">Total del dia</p>
-          </div>
-          <div className="card">
-            <p className="text-sm text-gray-500">Socios Activos</p>
-            <p className="text-3xl font-bold text-gray-700 mt-1">{stats.totalPersonas}</p>
-            <p className="text-xs text-gray-400 mt-1">Personas registradas</p>
-          </div>
-          <div className="card border-l-4 border-l-red-400">
-            <p className="text-sm text-red-500 font-medium">Stock Bajo</p>
-            <p className="text-3xl font-bold text-red-600 mt-1">{stats.productosBajos}</p>
-            <p className="text-xs text-gray-400 mt-1">Productos bajo minimo</p>
-          </div>
-          <div className="card bg-green-600 text-white">
-            <p className="text-sm text-green-100">Acciones Rapidas</p>
-            <div className="mt-3 space-y-2">
-              <Link href="/dashboard/ventas/nueva" className="block text-sm bg-white text-green-700 rounded-lg px-3 py-2 font-medium text-center hover:bg-green-50">+ Nueva Venta</Link>
-              <Link href="/dashboard/compras/nueva" className="block text-sm bg-green-700 text-white rounded-lg px-3 py-2 font-medium text-center hover:bg-green-800">+ Nueva Compra</Link>
+        {loading ? <div className="text-gray-500">Cargando...</div> : (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-white rounded-xl shadow p-4">
+                <div className="text-sm text-gray-500">Stock Total (g)</div>
+                <div className="text-3xl font-bold text-green-700">{stats.stockTotal}</div>
+                <div className="text-xs text-gray-400 mt-1">{stats.totalProductos} productos activos</div>
+              </div>
+              <div className="bg-white rounded-xl shadow p-4">
+                <div className="text-sm text-gray-500">Ventas Hoy</div>
+                <div className="text-3xl font-bold text-blue-700">{stats.ventasHoy.toFixed(2)} EUR</div>
+                <div className="text-xs text-gray-400 mt-1">Total del dia</div>
+              </div>
+              <div className="bg-white rounded-xl shadow p-4">
+                <div className="text-sm text-gray-500">Compras Hoy</div>
+                <div className="text-3xl font-bold text-purple-700">{stats.comprasHoy.toFixed(2)} EUR</div>
+                <div className="text-xs text-gray-400 mt-1">Total del dia</div>
+              </div>
+              <div className="bg-white rounded-xl shadow p-4">
+                <div className="text-sm text-gray-500">Socios Activos</div>
+                <div className="text-3xl font-bold text-gray-800">{stats.totalPersonas}</div>
+                <div className="text-xs text-gray-400 mt-1">Personas registradas</div>
+              </div>
+              <div className={`bg-white rounded-xl shadow p-4 ${stats.productosBajos > 0 ? 'border-l-4 border-red-500' : ''}`}>
+                <div className="text-sm text-gray-500">Stock Bajo</div>
+                <div className={`text-3xl font-bold ${stats.productosBajos > 0 ? 'text-red-600' : 'text-gray-800'}`}>{stats.productosBajos}</div>
+                <div className="text-xs text-gray-400 mt-1">Productos bajo minimo</div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          {/* Productos bajo stock */}
-          <div className="card">
-            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span>⚠️</span> Productos Bajo Minimo
-            </h3>
-            {productos.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">Todos los productos tienen stock suficiente</p>
-            ) : (
-              <div className="space-y-2">
-                {productos.map((p: any) => (
-                  <div key={p.id} className="flex justify-between items-center py-2 border-b border-gray-50">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{p.name}</p>
-                      <p className="text-xs text-gray-400">{p.variety}</p>
+            {/* Quick Actions */}
+            <div className="bg-white rounded-xl shadow p-5 mb-6">
+              <h2 className="font-semibold text-gray-700 mb-3">Acciones Rapidas</h2>
+              <div className="flex gap-3 flex-wrap">
+                <Link href="/dashboard/ventas" className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded font-semibold text-sm">+ Nueva Venta</Link>
+                <Link href="/dashboard/compras" className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-semibold text-sm">+ Nueva Compra</Link>
+                <Link href="/dashboard/productos" className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-semibold text-sm">+ Nuevo Producto</Link>
+                <Link href="/dashboard/personas" className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded font-semibold text-sm">+ Nueva Persona</Link>
+              </div>
+            </div>
+
+            {/* Low Stock Warning */}
+            {lowProducts.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+                <h2 className="font-semibold text-red-700 mb-3">Productos Bajo Minimo</h2>
+                <div className="space-y-2">
+                  {lowProducts.map(p => (
+                    <div key={p.name} className="flex items-center justify-between">
+                      <span className="text-gray-800">{p.name}</span>
+                      <span className="text-red-600 font-mono font-bold">{p.stock_current} {p.unit}</span>
                     </div>
-                    <div className="text-right">
-                      <span className="badge-red">{p.stock_actual}{p.unit}</span>
-                      <p className="text-xs text-gray-400 mt-1">min: {p.stock_min}{p.unit}</p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-
-          {/* Ultimos movimientos */}
-          <div className="card">
-            <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <span>🔄</span> Ultimos Movimientos
-            </h3>
-            {movimientos.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">Sin movimientos registrados</p>
-            ) : (
-              <div className="space-y-2">
-                {movimientos.map((m: any) => (
-                  <div key={m.id} className="flex justify-between items-center py-2 border-b border-gray-50">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{m.products?.name}</p>
-                      <p className="text-xs text-gray-400">{new Date(m.created_at).toLocaleDateString('es-ES')}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className={m.movement_type === 'entrada' ? 'badge-green' : m.movement_type === 'salida' ? 'badge-red' : 'badge-yellow'}>
-                        {m.movement_type === 'entrada' ? '+' : '-'}{m.quantity}g
-                      </span>
-                    </div>
-                  </div>
-                ))}
+            {lowProducts.length === 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-5">
+                <p className="text-green-700">Todos los productos tienen stock suficiente</p>
               </div>
             )}
-          </div>
-        </div>
-      </div>
+          </>
+        )}
+      </main>
     </div>
   )
 }
