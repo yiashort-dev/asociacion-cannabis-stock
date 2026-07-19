@@ -87,7 +87,7 @@ export default function VentasPage() {
     
     if (error || !sale) { setMsg('Error: '+error?.message); return }
     
-    const saleItems = validItems.map(i=>({sale_id:sale.id, product_id:parseInt(i.product_id), quantity:parseFloat(i.quantity), unit_price:parseFloat(i.unit_price), subtotal: parseFloat(i.quantity)*parseFloat(i.unit_price)}))
+    const saleItems = validItems.map(i=>({sale_id:sale.id, product_id:parseInt(i.product_id), quantity:parseFloat(i.quantity), unit_price:parseFloat(i.unit_price),))
     await supabase.from('sale_items').insert(saleItems)
     
     for (const i of validItems) {
