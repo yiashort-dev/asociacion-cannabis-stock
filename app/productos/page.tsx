@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 interface Product {
@@ -12,11 +12,9 @@ interface Product {
   price_sale: number
   stock_current: number
   active: boolean
-  categories?: { name: string }
 }
 
 export default function ProductosPage() {
-  const supabase = createClientComponentClient()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -28,7 +26,7 @@ export default function ProductosPage() {
 
   async function loadProducts() {
     setLoading(true)
-    const { data } = await supabase.from('products').select('*, categories(name)').order('name')
+    const { data } = await supabase.from('products').select('*').order('name')
     setProducts(data || [])
     setLoading(false)
   }
