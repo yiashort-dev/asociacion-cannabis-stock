@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 interface Product { id: string; name: string; unit: string; stock_current: number }
@@ -11,7 +11,6 @@ interface Purchase {
 }
 
 export default function ComprasPage() {
-  const supabase = createClientComponentClient()
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [persons, setPersons] = useState<{id: string; full_name: string}[]>([])
@@ -59,9 +58,10 @@ export default function ComprasPage() {
       validItems.map(i => ({ purchase_id: purchase.id, product_id: i.product_id, quantity: parseFloat(i.quantity), unit_price: parseFloat(i.unit_price) || 0 }))
     )
     for (const i of validItems) {
-      await supabase.rpc('increment_stock', { p_product_id: i.product_id, p_amount: parseFloat(i.quantity) })
-        .catch(() => supabase.from('products').select('stock_current').eq('id', i.product_id).single()
-          .then(({ data }) => supabase.from('products').update({ stock_current: (data?.stock_current || 0) + parseFloat(i.quantity) }).eq('id', i.product_id)))
+      const prod = products.find(p => p.id === i.product_id)
+      if (prod) {
+        await supabase.from('products').update({ stock_current: prod.stock_current + parseFloat(i.quantity) }).eq('id', i.product_id)
+      }
     }
     setMsg('Compra registrada')
     setShowForm(false)
@@ -161,7 +161,7 @@ export default function ComprasPage() {
                 {purchases.map(p => (
                   <tr key={p.id} className="border-t hover:bg-gray-50">
                     <td className="px-4 py-3">{new Date(p.date).toLocaleDateString('es-ES')}</td>
-                    <td className="px-4 py-3">{p.persons?.full_name || <span className="text-gray-400">-</span>}</td>
+                    <td className="px-4 py-3">{p.persons?.full_name || '-'}</td>
                     <td className="px-4 py-3 text-xs">{p.purchase_items?.map(i => `${i.products?.name} x${i.quantity}`).join(', ')}</td>
                     <td className="text-right px-4 py-3 font-semibold">{p.total?.toFixed(2)}€</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.notes}</td>
