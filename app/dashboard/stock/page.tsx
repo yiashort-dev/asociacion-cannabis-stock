@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Product {
-  id: string
+  id: number
   name: string
   unit: string
-  stock_current: number
+  stock_actual: number
   stock_min: number
-  price_purchase: number
-  price_sale: number
+  cost_price: number
+  sale_price: number
   active: boolean
 }
 
@@ -19,10 +19,10 @@ function exportCSV(products: Product[]) {
     rows.push([
       p.name,
       p.unit,
-      String(p.stock_current),
+      String(p.stock_actual),
       String(p.stock_min || 0),
-      p.price_purchase?.toFixed(2) || '0',
-      p.price_sale?.toFixed(2) || '0',
+      p.cost_price?.toFixed(2) || '0',
+      p.sale_price?.toFixed(2) || '0',
       p.active ? 'Activo' : 'Inactivo'
     ])
   })
@@ -55,13 +55,13 @@ export default function StockPage() {
   const filtered = products.filter(p => {
     const matchFilter = !filter || p.name.toLowerCase().includes(filter.toLowerCase())
     const matchActive = showInactive ? true : p.active
-    const matchLow = showLowStock ? p.stock_current <= (p.stock_min || 10) : true
+    const matchLow = showLowStock ? p.stock_actual <= (p.stock_min || 10) : true
     return matchFilter && matchActive && matchLow
   })
 
-  const totalStock = products.filter(p => p.active).reduce((s, p) => s + p.stock_current, 0)
-  const lowCount = products.filter(p => p.active && p.stock_current <= (p.stock_min || 10)).length
-  const totalValue = products.filter(p => p.active).reduce((s, p) => s + p.stock_current * (p.price_sale || 0), 0)
+  const totalStock = products.filter(p => p.active).reduce((s, p) => s + p.stock_actual, 0)
+  const lowCount = products.filter(p => p.active && p.stock_actual <= (p.stock_min || 10)).length
+  const totalValue = products.filter(p => p.active).reduce((s, p) => s + p.stock_actual * (p.sale_price || 0), 0)
 
   return (
     <div className="p-6">
@@ -118,7 +118,7 @@ export default function StockPage() {
             </thead>
             <tbody>
               {filtered.map(p => {
-                const isLow = p.stock_current <= (p.stock_min || 10)
+                const isLow = p.stock_actual <= (p.stock_min || 10)
                 return (
                   <tr key={p.id} className={`border-t hover:bg-gray-50 ${!p.active ? 'opacity-50' : ''}`}>
                     <td className="p-3">
@@ -127,7 +127,7 @@ export default function StockPage() {
                     </td>
                     <td className="p-3 text-center">
                       <span className={`text-xl font-bold ${isLow ? 'text-red-600' : 'text-gray-800'}`}>
-                        {p.stock_current}
+                        {p.stock_actual}
                       </span>
                       <span className="text-xs text-gray-400 ml-1">{p.unit}</span>
                     </td>
@@ -139,8 +139,8 @@ export default function StockPage() {
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">OK</span>
                       )}
                     </td>
-                    <td className="p-3 text-right text-gray-600">{p.price_sale?.toFixed(2)} EUR</td>
-                    <td className="p-3 text-right font-medium text-green-700">{(p.stock_current * (p.price_sale || 0)).toFixed(2)} EUR</td>
+                    <td className="p-3 text-right text-gray-600">{p.sale_price?.toFixed(2)} EUR</td>
+                    <td className="p-3 text-right font-medium text-green-700">{(p.stock_actual * (p.sale_price || 0)).toFixed(2)} EUR</td>
                   </tr>
                 )
               })}
