@@ -5,196 +5,168 @@ import { supabase } from '@/lib/supabase'
 interface Purchase {
   id: number
   purchase_date: string
-  notes: string
-  total_cost: number
   supplier: string
+  total_cost: number
   status: string
-  purchase_items?: { quantity: number; unit_price: number; products: { name: string } }[]
-}
-
-function exportCSV(purchases: Purchase[]) {
-  const rows = [['ID', 'Fecha', 'Proveedor', 'Total EUR', 'Estado', 'Notas']]
-  purchases.forEach(p => {
-    rows.push([
-      String(p.id),
-      p.purchase_date,
-      p.supplier || '',
-      p.total_cost?.toFixed(2) || '0',
-      p.status || '',
-      p.notes || ''
-    ])
-  })
-  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `compras_${new Date().toISOString().split('T')[0]}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  notes: string
 }
 
 export default function ComprasPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [products, setProducts] = useState<{id: number; name: string; unit: string; stock_actual: number}[]>([])
+  const [products, setProducts] = useState<{id:number; name:string}[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ supplier: '', notes: '', purchase_date: new Date().toISOString().split('T')[0] })
-  const [items, setItems] = useState([{ product_id: '', quantity: '', unit_price: '' }])
-  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({supplier:'', notes:'', purchase_date: new Date().toISOString().split('T')[0]})
+  const [items, setItems] = useState([{product_id:'', quantity:'', unit_price:''}])
   const [msg, setMsg] = useState('')
-  const [filter, setFilter] = useState('')
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { load() }, [])
 
-  async function loadAll() {
+  async function load() {
     setLoading(true)
-    const [{ data: p }, { data: pr }] = await Promise.all([
-      supabase.from('purchases').select('*, purchase_items(quantity, unit_price, products(name))').order('purchase_date', { ascending: false }).limit(100),
-      supabase.from('products').select('id, name, unit, stock_actual').eq('active', true).order('name')
+    const [{data:p}, {data:pr}] = await Promise.all([
+      supabase.from('purchases').select('*').order('purchase_date', {ascending: false}).limit(50),
+      supabase.from('products').select('id,name').eq('active', true).order('name')
     ])
     setPurchases(p || [])
     setProducts(pr || [])
     setLoading(false)
   }
 
-  function addItem() { setItems([...items, { product_id: '', quantity: '', unit_price: '' }]) }
-  function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)) }
-  function updateItem(i: number, field: string, value: string) {
-    const newItems = [...items]
-    newItems[i] = { ...newItems[i], [field]: value }
-    setItems(newItems)
+  function exportCSV() {
+    const rows=[['ID','Fecha','Proveedor','Total','Estado']]
+    purchases.forEach(p=>rows.push([String(p.id), p.purchase_date, p.supplier, p.total_cost?.toFixed(2)||'0', p.status]))
+    const csv=rows.map(r=>r.map(v=>`\"${v}\"`).join(',')).join('\n')
+    const a=document.createElement('a')
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}))
+    a.download=`compras_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const validItems = items.filter(i => i.product_id && i.quantity && i.unit_price)
-    if (!validItems.length) { setMsg('Agrega al menos un producto'); return }
-    setSaving(true)
+    if (!form.supplier) { setMsg('Ingresa proveedor'); return }
+    const validItems = items.filter(i=> i.product_id && i.quantity && i.unit_price)
+    if (!validItems.length) { setMsg('Agrega productos'); return }
     setMsg('')
-    const total_cost = validItems.reduce((s, i) => s + parseFloat(i.quantity) * parseFloat(i.unit_price), 0)
-    const { data: purchase, error } = await supabase.from('purchases').insert({ 
-      ...form, 
+    const total_cost = validItems.reduce((s,i)=>s+parseFloat(i.quantity)*parseFloat(i.unit_price),0)
+    const {data:purchase,error} = await supabase.from('purchases').insert({
+      supplier: form.supplier,
+      notes: form.notes,
+      purchase_date: form.purchase_date,
       total_cost,
       status: 'completada'
     }).select().single()
-    if (error || !purchase) { setMsg('Error: ' + error?.message); setSaving(false); return }
-    const purchaseItems = validItems.map(i => ({ 
-      purchase_id: purchase.id, 
-      product_id: parseInt(i.product_id), 
-      quantity: parseFloat(i.quantity), 
-      unit_price: parseFloat(i.unit_price),
-      subtotal: parseFloat(i.quantity) * parseFloat(i.unit_price)
-    }))
-    await supabase.from('purchase_items').insert(purchaseItems)
+    if (error || !purchase) { setMsg('Error: '+error?.message); return }
+    const pitems = validItems.map(i=>({purchase_id:purchase.id, product_id:parseInt(i.product_id), quantity:parseFloat(i.quantity), unit_price:parseFloat(i.unit_price)}))
+    await supabase.from('purchase_items').insert(pitems)
     for (const i of validItems) {
-      const prod = products.find(p => p.id === parseInt(i.product_id))
-      if (prod) await supabase.from('products').update({ stock_actual: prod.stock_actual + parseFloat(i.quantity) }).eq('id', prod.id)
+      const p = products.find(pr=>pr.id===parseInt(i.product_id))
+      if (p) await supabase.from('products').select('stock_actual').eq('id',p.id).single().then(({data})=>{
+        if(data) supabase.from('products').update({stock_actual: (data.stock_actual||0)+parseFloat(i.quantity)}).eq('id',p.id)
+      })
     }
-    setMsg('Compra registrada correctamente')
-    setForm({ supplier: '', notes: '', purchase_date: new Date().toISOString().split('T')[0] })
-    setItems([{ product_id: '', quantity: '', unit_price: '' }])
+    setMsg('Compra registrada OK')
+    setForm({supplier:'', notes:'', purchase_date: new Date().toISOString().split('T')[0]})
+    setItems([{product_id:'', quantity:'', unit_price:''}])
     setShowForm(false)
-    setSaving(false)
-    loadAll()
+    load()
   }
 
-  const filtered = purchases.filter(p =>
-    !filter ||
-    p.supplier?.toLowerCase().includes(filter.toLowerCase()) ||
-    p.purchase_date?.includes(filter)
-  )
+  function addItem() { setItems([...items, {product_id:'', quantity:'', unit_price:''}]) }
+  function updateItem(i:number,field:string,value:string) {
+    const ni=[...items]
+    ni[i]={...ni[i],[field]:value}
+    setItems(ni)
+  }
+
+  const total = items.reduce((s,i)=>s+(parseFloat(i.quantity)||0)*(parseFloat(i.unit_price)||0),0)
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Compras</h1>
-        <div className="flex gap-2">
-          <button onClick={() => exportCSV(filtered)} className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700">Exportar CSV</button>
-          <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
-            {showForm ? 'Cancelar' : '+ Nueva Compra'}
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">Compras</h1>
+            <p className="text-xs text-gray-500">{purchases.length} registros</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={exportCSV} className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg text-sm">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            </button>
+            <button onClick={()=>setShowForm(!showForm)} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${showForm?'bg-gray-200 text-gray-700':'bg-green-600 text-white'}`}>
+              {showForm?'Cancelar':'+ Nueva'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {msg && <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{msg}</div>}
+      {msg && <div className="mx-4 mt-3 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl text-sm">{msg}</div>}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow mb-6">
-          <h2 className="text-lg font-semibold mb-4">Nueva Compra</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <form onSubmit={handleSubmit} className="bg-white mx-4 mt-3 rounded-2xl shadow-sm p-4">
+          <h2 className="font-semibold mb-3">Nueva Compra</h2>
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
-              <input type="text" value={form.supplier} onChange={e => setForm({...form, supplier: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="Nombre del proveedor" />
+              <label className="block text-xs font-medium text-gray-700 mb-1">Proveedor *</label>
+              <input type="text" value={form.supplier} onChange={e=>setForm({...form, supplier:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" required />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-              <input type="date" value={form.purchase_date} onChange={e => setForm({...form, purchase_date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-              <input type="text" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="Opcional" />
-            </div>
-          </div>
-          <div className="mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700">Productos</label>
-              <button type="button" onClick={addItem} className="text-sm text-blue-600 hover:underline">+ Agregar</button>
-            </div>
-            {items.map((item, i) => (
-              <div key={i} className="grid grid-cols-4 gap-2 mb-2">
-                <select value={item.product_id} onChange={e => updateItem(i, 'product_id', e.target.value)} className="border rounded-lg p-2 text-sm col-span-2">
-                  <option value="">Producto...</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <input type="number" placeholder="Cantidad" value={item.quantity} onChange={e => updateItem(i, 'quantity', e.target.value)} className="border rounded-lg p-2 text-sm" min="0" step="0.1" />
-                <div className="flex gap-1">
-                  <input type="number" placeholder="Precio" value={item.unit_price} onChange={e => updateItem(i, 'unit_price', e.target.value)} className="border rounded-lg p-2 text-sm w-full" min="0" step="0.01" />
-                  {items.length > 1 && <button type="button" onClick={() => removeItem(i)} className="text-red-500 px-2">x</button>}
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Fecha</label>
+                <input type="date" value={form.purchase_date} onChange={e=>setForm({...form, purchase_date:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
               </div>
-            ))}
-            <p className="text-sm font-semibold text-right text-blue-700">
-              Total: {items.reduce((s, i) => s + (parseFloat(i.quantity)||0) * (parseFloat(i.unit_price)||0), 0).toFixed(2)} EUR
-            </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Notas</label>
+                <input type="text" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-medium text-gray-700">Productos</label>
+                <button type="button" onClick={addItem} className="text-xs text-green-600">+ Agregar</button>
+              </div>
+              <div className="space-y-2">
+                {items.map((item,i)=>(
+                  <div key={i} className="grid grid-cols-3 gap-2">
+                    <select value={item.product_id} onChange={e=>updateItem(i,'product_id',e.target.value)} className="border border-gray-200 rounded-xl p-2 text-xs">
+                      <option value="">Producto</option>
+                      {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <input type="number" placeholder="Cant." value={item.quantity} onChange={e=>updateItem(i,'quantity',e.target.value)} className="border border-gray-200 rounded-xl p-2 text-xs" step="0.1" />
+                    <input type="number" placeholder="Precio" value={item.unit_price} onChange={e=>updateItem(i,'unit_price',e.target.value)} className="border border-gray-200 rounded-xl p-2 text-xs" step="0.01" />
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm font-semibold text-right text-green-700 mt-2">Total: {total.toFixed(2)} €</p>
+            </div>
+            <button type="submit" className="w-full bg-green-600 text-white py-2.5 rounded-xl font-medium">Registrar Compra</button>
           </div>
-          <button type="submit" disabled={saving} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Guardando...' : 'Registrar Compra'}
-          </button>
         </form>
       )}
 
-      <div className="bg-white rounded-xl shadow">
-        <div className="p-4 border-b">
-          <input type="text" placeholder="Buscar por proveedor o fecha..." value={filter} onChange={e => setFilter(e.target.value)} className="border rounded-lg p-2 text-sm w-full max-w-sm" />
-        </div>
+      <div className="px-4 pt-3 pb-24 space-y-2">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Cargando...</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-3 text-gray-600">Fecha</th>
-                <th className="text-left p-3 text-gray-600">Proveedor</th>
-                <th className="text-left p-3 text-gray-600">Productos</th>
-                <th className="text-right p-3 text-gray-600">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 text-gray-700">{p.purchase_date}</td>
-                  <td className="p-3 text-gray-700">{p.supplier || '-'}</td>
-                  <td className="p-3 text-gray-500 text-xs">{p.purchase_items?.map(i => `${i.quantity}x ${i.products?.name}`).join(', ') || '-'}</td>
-                  <td className="p-3 text-right font-semibold text-blue-700">{p.total_cost?.toFixed(2)} EUR</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={4} className="p-8 text-center text-gray-400">Sin compras registradas</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
+          <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin"/></div>
+        ) : purchases.length===0 ? (
+          <div className="text-center py-12 text-gray-400"><p className="text-sm">Sin compras</p></div>
+        ) : purchases.map(p=>(
+          <div key={p.id} className="bg-white rounded-2xl shadow-sm p-4 border-l-4 border-blue-400">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h3 className="font-semibold text-gray-900">{p.supplier}</h3>
+                <p className="text-xs text-gray-400">{p.purchase_date}</p>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">{p.status}</span>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-xs text-gray-500">{p.notes||'-'}</p>
+              </div>
+              <p className="text-lg font-bold text-blue-700">{p.total_cost?.toFixed(2)} €</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
