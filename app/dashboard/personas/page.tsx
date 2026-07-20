@@ -14,24 +14,14 @@ interface Person {
 }
 
 function exportCSV(persons: Person[]) {
-  const rows = [['Num. Socio', 'Nombre', 'Email', 'Telefono', 'Notas', 'Estado', 'Fecha Alta']]
-  persons.forEach(p => {
-    rows.push([
-      p.member_number || '',
-      p.full_name,
-      p.email || '',
-      p.phone || '',
-      p.notes || '',
-      p.active ? 'Activo' : 'Inactivo',
-      p.created_at ? p.created_at.split('T')[0] : ''
-    ])
-  })
-  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `socios_${new Date().toISOString().split('T')[0]}.csv`
+  const rows=[['Num. Socio','Nombre','Email','Telefono','Notas','Estado','Fecha Alta']]
+  persons.forEach(p=>rows.push([p.member_number||'', p.full_name, p.email||'', p.phone||'', p.notes||'', p.active?'Activo':'Inactivo', p.created_at?p.created_at.split('T')[0]:'' ]))
+  const csv=rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n')
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'})
+  const url=URL.createObjectURL(blob)
+  const a=document.createElement('a')
+  a.href=url
+  a.download=`socios_${new Date().toISOString().split('T')[0]}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -40,47 +30,48 @@ export default function PersonasPage() {
   const [persons, setPersons] = useState<Person[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', member_number: '', notes: '' })
+  const [editId, setEditId] = useState<string|null>(null)
+  const [form, setForm] = useState({full_name:'', email:'', phone:'', member_number:'', notes:''})
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [filter, setFilter] = useState('')
   const [showInactive, setShowInactive] = useState(false)
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(()=>{ loadAll() },[])
 
   async function loadAll() {
     setLoading(true)
-    const { data } = await supabase.from('persons').select('*').order('full_name')
-    setPersons(data || [])
+    const {data}=await supabase.from('persons').select('*').order('full_name')
+    setPersons(data||[])
     setLoading(false)
   }
 
-  function startEdit(p: Person) {
+  function startEdit(p:Person) {
     setEditId(p.id)
-    setForm({ full_name: p.full_name, email: p.email || '', phone: p.phone || '', member_number: p.member_number || '', notes: p.notes || '' })
+    setForm({full_name:p.full_name, email:p.email||'', phone:p.phone||'', member_number:p.member_number||'', notes:p.notes||''})
     setShowForm(true)
+    window.scrollTo({top:0,behavior:'smooth'})
   }
 
   function cancelForm() {
     setShowForm(false)
     setEditId(null)
-    setForm({ full_name: '', email: '', phone: '', member_number: '', notes: '' })
+    setForm({full_name:'', email:'', phone:'', member_number:'', notes:''})
     setMsg('')
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e:React.FormEvent) {
     e.preventDefault()
-    if (!form.full_name.trim()) { setMsg('El nombre es obligatorio'); return }
+    if(!form.full_name.trim()){setMsg('El nombre es obligatorio');return}
     setSaving(true)
     setMsg('')
-    if (editId) {
-      const { error } = await supabase.from('persons').update(form).eq('id', editId)
-      if (error) { setMsg('Error: ' + error.message); setSaving(false); return }
+    if(editId){
+      const {error}=await supabase.from('persons').update(form).eq('id',editId)
+      if(error){setMsg('Error: '+error.message);setSaving(false);return}
       setMsg('Socio actualizado')
     } else {
-      const { error } = await supabase.from('persons').insert({ ...form, active: true })
-      if (error) { setMsg('Error: ' + error.message); setSaving(false); return }
+      const {error}=await supabase.from('persons').insert({...form, active:true})
+      if(error){setMsg('Error: '+error.message);setSaving(false);return}
       setMsg('Socio registrado correctamente')
     }
     cancelForm()
@@ -88,117 +79,81 @@ export default function PersonasPage() {
     loadAll()
   }
 
-  async function toggleActive(p: Person) {
-    await supabase.from('persons').update({ active: !p.active }).eq('id', p.id)
+  async function toggleActive(p:Person) {
+    await supabase.from('persons').update({active:!p.active}).eq('id',p.id)
     loadAll()
   }
 
-  const filtered = persons.filter(p => {
-    const matchFilter = !filter || p.full_name.toLowerCase().includes(filter.toLowerCase()) || p.member_number?.includes(filter) || p.email?.toLowerCase().includes(filter.toLowerCase())
-    const matchActive = showInactive ? true : p.active
-    return matchFilter && matchActive
+  const filtered=persons.filter(p=>{
+    const matchFilter=!filter||p.full_name.toLowerCase().includes(filter.toLowerCase())||p.member_number?.includes(filter)||p.email?.toLowerCase().includes(filter.toLowerCase())
+    const matchActive=showInactive?true:p.active
+    return matchFilter&&matchActive
   })
 
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Socios / Personas</h1>
+  return(
+    <div className="p-4 max-w-2xl mx-auto">
+      <div className="flex items-center justify-between mb-4">
+        <div><h1 className="text-2xl font-bold text-gray-900">Socios</h1><p className="text-xs text-gray-400">{filtered.length} socios</p></div>
         <div className="flex gap-2">
-          <button onClick={() => exportCSV(filtered)} className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700">Exportar CSV</button>
-          <button onClick={() => { setShowForm(!showForm); setEditId(null) }} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700">
-            {showForm && !editId ? 'Cancelar' : '+ Nuevo Socio'}
-          </button>
+          <button onClick={()=>exportCSV(filtered)} className="bg-gray-600 text-white px-3 py-2 rounded-xl text-sm">CSV</button>
+          <button onClick={()=>{setShowForm(!showForm);setEditId(null)}} className={`px-3 py-2 rounded-xl text-sm font-medium ${showForm&&!editId?'bg-gray-200 text-gray-700':'bg-purple-600 text-white'}`}>{showForm&&!editId?'Cancelar':'+ Nuevo'}</button>
         </div>
       </div>
 
-      {msg && <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm">{msg}</div>}
+      {msg&&<div className="bg-purple-50 border border-purple-200 text-purple-700 rounded-xl px-4 py-3 mb-4 text-sm">{msg}</div>}
 
-      {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow mb-6">
-          <h2 className="text-lg font-semibold mb-4">{editId ? 'Editar Socio' : 'Nuevo Socio'}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo *</label>
-              <input type="text" value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} className="w-full border rounded-lg p-2 text-sm" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Numero de socio</label>
-              <input type="text" value={form.member_number} onChange={e => setForm({...form, member_number: e.target.value})} className="w-full border rounded-lg p-2 text-sm" placeholder="Ej: S-001" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Telefono</label>
-              <input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-              <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border rounded-lg p-2 text-sm" rows={2} />
-            </div>
+      {showForm&&(
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 space-y-3">
+          <h2 className="font-semibold text-gray-800">{editId?'Editar Socio':'Nuevo Socio'}</h2>
+          <div><label className="text-xs text-gray-500 mb-1 block">Nombre completo *</label><input type="text" value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" required /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-gray-500 mb-1 block">Numero de socio</label><input type="text" value={form.member_number} onChange={e=>setForm({...form,member_number:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" placeholder="Ej: S-001" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Telefono</label><input type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" /></div>
           </div>
+          <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" /></div>
+          <div><label className="text-xs text-gray-500 mb-1 block">Notas</label><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" rows={2} /></div>
           <div className="flex gap-2">
-            <button type="submit" disabled={saving} className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50">
-              {saving ? 'Guardando...' : editId ? 'Actualizar' : 'Registrar Socio'}
-            </button>
-            <button type="button" onClick={cancelForm} className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300">Cancelar</button>
+            <button type="submit" disabled={saving} className="flex-1 bg-purple-600 text-white py-3 rounded-xl font-medium disabled:opacity-50">{saving?'Guardando...':(editId?'Actualizar':'Registrar Socio')}</button>
+            <button type="button" onClick={cancelForm} className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium">Cancelar</button>
           </div>
         </form>
       )}
 
-      <div className="bg-white rounded-xl shadow">
-        <div className="p-4 border-b flex gap-4 items-center">
-          <input type="text" placeholder="Buscar por nombre, numero o email..." value={filter} onChange={e => setFilter(e.target.value)} className="border rounded-lg p-2 text-sm flex-1 max-w-sm" />
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-            Mostrar inactivos
-          </label>
-          <span className="text-sm text-gray-500">{filtered.length} socios</span>
-        </div>
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">Cargando...</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-3 text-gray-600">Num.</th>
-                <th className="text-left p-3 text-gray-600">Nombre</th>
-                <th className="text-left p-3 text-gray-600">Email</th>
-                <th className="text-left p-3 text-gray-600">Telefono</th>
-                <th className="text-center p-3 text-gray-600">Estado</th>
-                <th className="text-center p-3 text-gray-600">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id} className={`border-t hover:bg-gray-50 ${!p.active ? 'opacity-50' : ''}`}>
-                  <td className="p-3 text-gray-500 text-xs">{p.member_number || '-'}</td>
-                  <td className="p-3 font-medium text-gray-800">{p.full_name}</td>
-                  <td className="p-3 text-gray-600">{p.email || '-'}</td>
-                  <td className="p-3 text-gray-600">{p.phone || '-'}</td>
-                  <td className="p-3 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {p.active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="p-3 text-center">
-                    <div className="flex gap-2 justify-center">
-                      <button onClick={() => startEdit(p)} className="text-blue-600 text-xs hover:underline">Editar</button>
-                      <button onClick={() => toggleActive(p)} className={`text-xs hover:underline ${p.active ? 'text-red-500' : 'text-green-600'}`}>
-                        {p.active ? 'Desactivar' : 'Activar'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-400">Sin socios registrados</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
+      <div className="flex gap-3 mb-4 items-center">
+        <input type="text" placeholder="Buscar por nombre, numero o email..." value={filter} onChange={e=>setFilter(e.target.value)} className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm shadow-sm" />
+        <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+          <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} className="rounded" />
+          Inactivos
+        </label>
       </div>
+
+      {loading?(
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"/></div>
+      ):filtered.length===0?(
+        <div className="text-center py-12 text-gray-400 text-sm">Sin socios registrados</div>
+      ):filtered.map(p=>(
+        <div key={p.id} className={`bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-hidden ${!p.active?'opacity-60':''}`}>
+          <div className="p-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="font-semibold text-gray-900">{p.full_name}</p>
+                <p className="text-xs text-gray-400">{p.member_number||'Sin numero'}</p>
+              </div>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.active?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500'}`}>{p.active?'Activo':'Inactivo'}</span>
+            </div>
+            {(p.email||p.phone)&&(
+              <div className="mt-2 space-y-0.5">
+                {p.email&&<p className="text-xs text-gray-500">Email: {p.email}</p>}
+                {p.phone&&<p className="text-xs text-gray-500">Tel: {p.phone}</p>}
+              </div>
+            )}
+          </div>
+          <div className="flex border-t border-gray-100">
+            <button onClick={()=>startEdit(p)} className="flex-1 py-3 text-sm font-medium text-blue-600 bg-blue-50">Editar</button>
+            <button onClick={()=>toggleActive(p)} className={`flex-1 py-3 text-sm font-medium ${p.active?'text-red-600 bg-red-50':'text-green-600 bg-green-50'}`}>{p.active?'Desactivar':'Activar'}</button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
