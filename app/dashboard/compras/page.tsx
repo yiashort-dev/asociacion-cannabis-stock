@@ -2,23 +2,23 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
-interface PurchaseItem {
+type PurchaseItem = {
   id: number
   product_id: number
   quantity: number
   unit_price: number
   subtotal: number
-  products?: { name: string; unit: string }
+  products: { name: string; unit: string } | null
 }
 
-interface Purchase {
+type Purchase = {
   id: number
   purchase_date: string
   supplier: string
   total_cost: number
   status: string
   notes: string
-  purchase_items?: PurchaseItem[]
+  purchase_items: PurchaseItem[]
 }
 
 export default function ComprasPage() {
@@ -35,12 +35,12 @@ export default function ComprasPage() {
 
   async function load() {
     setLoading(true)
-    const [{data:p},{data:pr}] = await Promise.all([
+    const [{data:p, error:e1},{data:pr}] = await Promise.all([
       supabase.from('purchases').select('id,purchase_date,supplier,total_cost,status,notes,purchase_items(id,product_id,quantity,unit_price,subtotal,products(name,unit))').order('purchase_date',{ascending:false}).limit(50),
       supabase.from('products').select('id,name').eq('active',true).order('name')
     ])
-    setPurchases(p||[])
-    setProducts(pr||[])
+    setPurchases((p as unknown as Purchase[]) || [])
+    setProducts(pr || [])
     setLoading(false)
   }
 
