@@ -24,56 +24,53 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-900 via-green-800 to-green-700 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div className="min-h-screen bg-gradient-to-br from-green-800 to-green-950 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-200 rounded-full mb-4">
             <span className="text-3xl">🌿</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Asociacion Stock</h1>
-          <p className="text-gray-500 text-sm mt-1">Sistema de Gestion Interno</p>
+          <h1 className="text-2xl font-bold text-white">Asociacion Stock</h1>
+          <p className="text-green-300 text-sm mt-1">Sistema de Gestion Interno</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="bg-white rounded-3xl shadow-2xl p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+              {error}
+            </div>
+          )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="text-xs font-medium text-gray-600 mb-1.5 block">Email</label>
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input"
+              onChange={e => setEmail(e.target.value)}
               placeholder="tu@email.com"
               required
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
+            <label className="text-xs font-medium text-gray-600 mb-1.5 block">Contrasena</label>
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input"
+              onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               required
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">{error}</div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full py-3 text-base disabled:opacity-50"
+            className="w-full bg-green-600 text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-green-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+          <p className="text-center text-xs text-gray-400">Solo para miembros autorizados de la asociacion</p>
         </form>
-
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Solo para miembros autorizados de la asociacion
-        </p>
       </div>
     </div>
   )
