@@ -38,7 +38,7 @@ export default function VentasPage() {
   async function load() {
     setLoading(true)
     const [{data:s},{data:pr},{data:pers}] = await Promise.all([
-      supabase.from('sales').select('id,sale_date,notes,total_amount,payment_method,status,persons(full_name),sale_items(quantity,unit_price,products(name,unit))').order('sale_date',{ascending:false}).limit(100),
+      supabase.from('sales').select('id,sale_date,notes,total_amount,payment_method,status,persons(full_name),sale_items(quantity,unit_price,products(name,unit))').order('sale_date',{ascending:false}),
       supabase.from('products').select('id,name,unit,stock_actual,sale_price').eq('active',true).order('name'),
       supabase.from('persons').select('id,full_name').eq('active',true).order('full_name')
     ])
@@ -51,13 +51,29 @@ export default function VentasPage() {
   async function handleSubmit(e:React.FormEvent) {
     e.preventDefault()
     setMsg('')
-    const totalAmount = items.reduce((sum,it)=>sum+(Number(it.quantity)*Number(it.unit_price)),0)
+    const validItems = items.filter(it=>it.product_id&&it.quantity&&it.unit_price)
+    if(validItems.length === 0) {
+      setMsg('❌ Debes añadir al menos un producto')
+      return
+    }
+    
+    const totalAmount = validItems.reduce((sum,it)=>sum+(Number(it.quantity)*Number(it.unit_price)),0)
     const {data:sale,error} = await supabase.from('sales').insert({person_id:Number(form.person_id)||null,notes:form.notes,sale_date:form.sale_date,payment_method:form.payment_method,total_amount:totalAmount,status:'completada'}).select().single()
-    if(error||!sale){setMsg('Error: '+error?.message);return}
-    const saleItems = items.filter(it=>it.product_id).map(it=>({sale_id:sale.id,product_id:Number(it.product_id),quantity:Number(it.quantity),unit_price:Number(it.unit_price),subtotal:Number(it.quantity)*Number(it.unit_price)}))
+    if(error||!sale){setMsg('❌ Error: '+error?.message);return}
+    
+    // FIX: NO incluir subtotal - se calcula automáticamente en BD
+    const saleItems = validItems.map(it=>({
+      sale_id:sale.id,
+      product_id:Number(it.product_id),
+      quantity:Number(it.quantity),
+      unit_price:Number(it.unit_price)
+      // subtotal se genera automáticamente: quantity * unit_price
+    }))
+    
     if(saleItems.length>0){
       const {error:e2} = await supabase.from('sale_items').insert(saleItems)
-      if(e2){setMsg('Error items: '+e2.message);return}
+      if(e2){setMsg('❌ Error items: '+e2.message);return}
+      
       for(const it of saleItems){
         await supabase.from('stock_movements').insert({product_id:it.product_id,movement_type:'salida',quantity:it.quantity,notes:'Venta #'+sale.id})
         const prod = products.find(p=>p.id===it.product_id)
@@ -66,7 +82,7 @@ export default function VentasPage() {
         }
       }
     }
-    setMsg('Venta registrada')
+    setMsg('✅ Venta registrada correctamente')
     setShowForm(false)
     setForm({person_id:'',notes:'',sale_date:new Date().toISOString().split('T')[0],payment_method:'efectivo'})
     setItems([{product_id:'',quantity:'',unit_price:''}])
@@ -94,7 +110,7 @@ export default function VentasPage() {
         </button>
       </div>
 
-      {msg&&<div className="bg-green-900/30 border border-green-700 rounded-lg p-3 text-green-400 text-sm">{msg}</div>}
+      {msg&&<div className={`border rounded-lg p-3 text-sm ${msg.includes('✅')?'bg-green-900/30 border-green-700 text-green-400':'bg-red-900/30 border-red-700 text-red-400'}`}>{msg}</div>}
 
       {showForm&&(
         <form onSubmit={handleSubmit} className="bg-gray-800 rounded-xl p-5 space-y-4">
@@ -121,7 +137,7 @@ export default function VentasPage() {
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Notas</label>
-              <input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm" placeholder="Opcional" />
+              <input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm" placeholder="Opcional"/>
             </div>
           </div>
           <div className="space-y-2">
@@ -132,9 +148,9 @@ export default function VentasPage() {
                   <option value="">Producto</option>
                   {products.map(p=>(<option key={p.id} value={p.id}>{p.name} ({p.stock_actual}{p.unit})</option>))}
                 </select>
-                <input type="number" placeholder="Cant" value={it.quantity} onChange={e=>updateItem(i,'quantity',e.target.value)} className="w-20 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm" />
-                <input type="number" placeholder="Precio" value={it.unit_price} onChange={e=>updateItem(i,'unit_price',e.target.value)} className="w-24 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm" />
-                {items.length>1&&<button type="button" onClick={()=>removeItem(i)} className="text-red-400 px-2 text-sm">X</button>}
+                <input type="number" placeholder="Cant" value={it.quantity} onChange={e=>updateItem(i,'quantity',e.target.value)} className="w-20 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm" step="0.1"/>
+                <input type="number" placeholder="Precio" value={it.unit_price} onChange={e=>updateItem(i,'unit_price',e.target.value)} className="w-24 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm" step="0.01"/>
+                {items.length>1&&<button type="button" onClick={()=>removeItem(i)} className="text-red-400 px-2 text-sm hover:text-red-300">X</button>}
               </div>
             ))}
             <button type="button" onClick={addItem} className="text-blue-400 text-sm hover:text-blue-300">+ Añadir producto</button>
@@ -152,7 +168,7 @@ export default function VentasPage() {
           {sales.length===0&&<p className="text-gray-500 text-sm">No hay ventas registradas</p>}
           {sales.map(sale=>(
             <div key={sale.id} className="bg-gray-800 rounded-xl p-4">
-              <div className="flex items-start justify-between cursor-pointer" onClick={()=>setExpanded(expanded===sale.id?null:sale.id)}>
+              <div className="flex items-start justify-between cursor-pointer hover:bg-gray-750 rounded-lg p-2 -mx-2" onClick={()=>setExpanded(expanded===sale.id?null:sale.id)}>
                 <div>
                   <p className="text-white font-medium">{sale.persons?.full_name||'Sin socio'}</p>
                   <p className="text-gray-400 text-sm">{sale.sale_date} · {sale.payment_method}</p>
@@ -167,7 +183,7 @@ export default function VentasPage() {
                   {sale.sale_items.map((it,i)=>(
                     <div key={i} className="flex justify-between text-sm text-gray-300">
                       <span>{it.products?.name} x{it.quantity}{it.products?.unit}</span>
-                      <span>{Number(it.unit_price).toFixed(2)} EUR/u</span>
+                      <span>{Number(it.unit_price).toFixed(2)} EUR/u = {(it.quantity * it.unit_price).toFixed(2)} EUR</span>
                     </div>
                   ))}
                   {sale.notes&&<p className="text-gray-400 text-xs mt-1">Nota: {sale.notes}</p>}
