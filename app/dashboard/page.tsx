@@ -34,11 +34,19 @@ export default function Dashboard() {
     try {
       const today = new Date().toISOString().split('T')[0]
 
+      // Consulta productos SIN filtros inicialmente para diagnosticar
       const { data: products, error: prodError } = await supabase
         .from('products')
-        .select('name, stock_actual, stock_min, unit, active')
+        .select('*')
 
-      if (prodError) console.error('Error products:', prodError)
+      if (prodError) {
+        console.error('Error products:', prodError)
+      } else {
+        console.log('✅ Productos obtenidos:', products?.length || 0)
+        if (products && products.length > 0) {
+          console.log('📋 Primer producto (todas las columnas):', products[0])
+        }
+      }
 
       const { data: ventas } = await supabase
         .from('sales')
@@ -55,21 +63,49 @@ export default function Dashboard() {
         .select('id')
         .eq('active', true)
 
+      // Procesar productos
       const allProducts = (products || [])
+      console.log('Total productos en BD:', allProducts.length)
+      
+      // Filtrar activos
       const activeProducts = allProducts.filter((p: any) => p.active === true || p.active === 'true')
+      console.log('Productos activos:', activeProducts.length)
+      
+      // Debug: mostrar campos de stock de los primeros productos
+      if (activeProducts.length > 0) {
+        console.log('📊 Stock de primeros 3 activos:', 
+          activeProducts.slice(0, 3).map((p: any) => ({
+            name: p.name,
+            stock_actual: p.stock_actual,
+            stock_min: p.stock_min,
+            unit: p.unit
+          }))
+        )
+      }
+
+      // Calcular stock total
+      const stockTotalCalculado = activeProducts.reduce((s: number, p: any) => {
+        const stock = Number(p.stock_actual) || 0
+        return s + stock
+      }, 0)
+      
+      console.log('💾 Stock total calculado:', stockTotalCalculado)
+
+      // Filtrar stock bajo
       const low = activeProducts.filter((p: any) => (p.stock_actual ?? 0) <= (p.stock_min ?? 10))
+      console.log('⚠️ Productos con stock bajo:', low.length)
 
       setLowProducts(low)
       setStats({
         totalProductos: activeProducts.length,
-        stockTotal: activeProducts.reduce((s: number, p: any) => s + (Number(p.stock_actual) || 0), 0),
+        stockTotal: stockTotalCalculado,
         ventasHoy: (ventas || []).reduce((s: number, v: any) => s + (Number(v.total_amount) || 0), 0),
         comprasHoy: (compras || []).reduce((s: number, c: any) => s + (Number(c.total_cost) || 0), 0),
         productosBajos: low.length,
         totalPersonas: (persons || []).length
       })
     } catch (err) {
-      console.error('Error loadStats:', err)
+      console.error('❌ Error loadStats:', err)
     } finally {
       setLoading(false)
     }
