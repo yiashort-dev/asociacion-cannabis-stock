@@ -6,7 +6,7 @@ type PurchaseItem = {
   id: number
   product_id: number
   quantity: number
-  unit_price: number
+  unit_cost: number
   subtotal: number
   products: { name: string; unit: string } | null
 }
@@ -36,9 +36,11 @@ export default function ComprasPage() {
   async function load() {
     setLoading(true)
     const [{data:p, error:e1},{data:pr}] = await Promise.all([
-      supabase.from('purchases').select('id,purchase_date,supplier,total_cost,status,notes,purchase_items(id,product_id,quantity,unit_price,subtotal,products(name,unit))').order('purchase_date',{ascending:false}),
+      supabase.from('purchases').select('id,purchase_date,supplier,total_cost,status,notes,purchase_items(id,product_id,quantity,unit_cost,subtotal,products(name,unit))').order('purchase_date',{ascending:false}),
       supabase.from('products').select('id,name').eq('active',true).order('name')
     ])
+    if(e1) console.error('❌ Error loading purchases:', e1)
+    else console.log('✅ Compras cargadas:', p?.length || 0)
     setPurchases((p as unknown as Purchase[]) || [])
     setProducts(pr || [])
     setLoading(false)
@@ -60,30 +62,50 @@ export default function ComprasPage() {
 
   async function handleSubmit(e:React.FormEvent){
     e.preventDefault()
-    if(!form.supplier.trim()){setMsg('El proveedor es obligatorio');return}
+    if(!form.supplier.trim()){setMsg('❌ El proveedor es obligatorio');return}
     const validItems=items.filter(i=>i.product_id&&i.quantity&&i.unit_price)
+    if(validItems.length === 0){setMsg('❌ Debes añadir al menos un producto');return}
     setMsg('')
     const total_cost=validItems.reduce((s,i)=>s+parseFloat(i.quantity)*parseFloat(i.unit_price),0)
+    console.log('Registrando compra:', {supplier:form.supplier, total_cost, items: validItems.length})
+    
     const {data:purchase,error}=await supabase.from('purchases').insert({supplier:form.supplier,notes:form.notes,purchase_date:form.purchase_date,total_cost,status:'completada'}).select().single()
-    if(error||!purchase){setMsg('Error: '+error?.message);return}
+    if(error||!purchase){
+      console.error('❌ Error insert purchase:', error)
+      setMsg('❌ Error: '+error?.message);
+      return
+    }
+    console.log('✅ Compra creada:', purchase.id)
+    
     if(validItems.length>0){
-      // FIX: NO incluir subtotal - se calcula automáticamente en BD
+      // FIX: usar unit_cost en lugar de unit_price (nombre correcto en BD)
       const purchaseItems=validItems.map(i=>({
         purchase_id:purchase.id,
         product_id:parseInt(i.product_id),
         quantity:parseFloat(i.quantity),
-        unit_price:parseFloat(i.unit_price)
-        // subtotal se genera automáticamente: quantity * unit_price
+        unit_cost:parseFloat(i.unit_price)  // ← CAMBIO: unit_cost en lugar de unit_price
+        // subtotal se genera automáticamente: quantity * unit_cost
       }))
+      console.log('Insertando items:', purchaseItems)
+      
       const {error:itemsError} = await supabase.from('purchase_items').insert(purchaseItems)
       if(itemsError){
-        setMsg('Error al registrar items: '+itemsError.message)
+        console.error('❌ Error insert items:', itemsError)
+        setMsg('❌ Error al registrar items: '+itemsError.message)
         return
       }
+      console.log('✅ Items registrados correctamente')
+      
+      // Actualizar stock
       for(const i of validItems){
         const {data:prod}=await supabase.from('products').select('stock_actual').eq('id',parseInt(i.product_id)).single()
-        if(prod)await supabase.from('products').update({stock_actual:(prod.stock_actual||0)+parseFloat(i.quantity)}).eq('id',parseInt(i.product_id))
+        if(prod){
+          const newStock = (prod.stock_actual||0)+parseFloat(i.quantity)
+          console.log(`Actualizando producto ${i.product_id}: ${prod.stock_actual} + ${i.quantity} = ${newStock}`)
+          await supabase.from('products').update({stock_actual:newStock}).eq('id',parseInt(i.product_id))
+        }
       }
+      console.log('✅ Stock actualizado')
     }
     setMsg('✅ Compra registrada correctamente')
     setForm({supplier:'',notes:'',purchase_date:new Date().toISOString().split('T')[0]})
@@ -103,7 +125,7 @@ export default function ComprasPage() {
           <button onClick={()=>setShowForm(!showForm)} className={`px-3 py-2 rounded-xl text-sm font-medium ${showForm?'bg-gray-200 text-gray-700':'bg-blue-600 text-white'}`}>{showForm?'Cancelar':'+ Nueva Compra'}</button>
         </div>
       </div>
-      {msg&&<div className={`border rounded-xl px-4 py-3 mb-4 text-sm ${msg.includes('✅')?'bg-green-50 border-green-200 text-green-700':'bg-blue-50 border-blue-200 text-blue-700'}`}>{msg}</div>}
+      {msg&&<div className={`border rounded-xl px-4 py-3 mb-4 text-sm ${msg.includes('✅')?'bg-green-50 border-green-200 text-green-700':'bg-red-50 border-red-200 text-red-700'}`}>{msg}</div>}
       {showForm&&(
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 space-y-3">
           <h2 className="font-semibold text-gray-800">Nueva Compra</h2>
@@ -149,7 +171,7 @@ export default function ComprasPage() {
                   {p.purchase_items.map((item,i)=>(
                     <div key={i} className="flex justify-between text-sm text-gray-700">
                       <span>{item.quantity} {item.products?.unit} x {item.products?.name}</span>
-                      <span className="font-medium">{(item.quantity*item.unit_price).toFixed(2)} EUR</span>
+                      <span className="font-medium">{(item.quantity*item.unit_cost).toFixed(2)} EUR</span>
                     </div>
                   ))}
                 </div>
