@@ -36,7 +36,7 @@ export default function ComprasPage() {
   async function load() {
     setLoading(true)
     const [{data:p, error:e1},{data:pr}] = await Promise.all([
-      supabase.from('purchases').select('id,purchase_date,supplier,total_cost,status,notes,purchase_items(id,product_id,quantity,unit_price,subtotal,products(name,unit))').order('purchase_date',{ascending:false}).limit(50),
+      supabase.from('purchases').select('id,purchase_date,supplier,total_cost,status,notes,purchase_items(id,product_id,quantity,unit_price,subtotal,products(name,unit))').order('purchase_date',{ascending:false}),
       supabase.from('products').select('id,name').eq('active',true).order('name')
     ])
     setPurchases((p as unknown as Purchase[]) || [])
@@ -67,14 +67,25 @@ export default function ComprasPage() {
     const {data:purchase,error}=await supabase.from('purchases').insert({supplier:form.supplier,notes:form.notes,purchase_date:form.purchase_date,total_cost,status:'completada'}).select().single()
     if(error||!purchase){setMsg('Error: '+error?.message);return}
     if(validItems.length>0){
-      const purchaseItems=validItems.map(i=>({purchase_id:purchase.id,product_id:parseInt(i.product_id),quantity:parseFloat(i.quantity),unit_price:parseFloat(i.unit_price),subtotal:parseFloat(i.quantity)*parseFloat(i.unit_price)}))
-      await supabase.from('purchase_items').insert(purchaseItems)
+      // FIX: NO incluir subtotal - se calcula automáticamente en BD
+      const purchaseItems=validItems.map(i=>({
+        purchase_id:purchase.id,
+        product_id:parseInt(i.product_id),
+        quantity:parseFloat(i.quantity),
+        unit_price:parseFloat(i.unit_price)
+        // subtotal se genera automáticamente: quantity * unit_price
+      }))
+      const {error:itemsError} = await supabase.from('purchase_items').insert(purchaseItems)
+      if(itemsError){
+        setMsg('Error al registrar items: '+itemsError.message)
+        return
+      }
       for(const i of validItems){
         const {data:prod}=await supabase.from('products').select('stock_actual').eq('id',parseInt(i.product_id)).single()
         if(prod)await supabase.from('products').update({stock_actual:(prod.stock_actual||0)+parseFloat(i.quantity)}).eq('id',parseInt(i.product_id))
       }
     }
-    setMsg('Compra registrada correctamente')
+    setMsg('✅ Compra registrada correctamente')
     setForm({supplier:'',notes:'',purchase_date:new Date().toISOString().split('T')[0]})
     setItems([{product_id:'',quantity:'',unit_price:''}])
     setShowForm(false)
@@ -89,34 +100,34 @@ export default function ComprasPage() {
         <div><h1 className="text-2xl font-bold text-gray-900">Compras</h1><p className="text-xs text-gray-400">{purchases.length} registros</p></div>
         <div className="flex gap-2">
           <button onClick={exportCSV} className="bg-gray-600 text-white px-3 py-2 rounded-xl text-sm">CSV</button>
-          <button onClick={()=>setShowForm(!showForm)} className={`px-3 py-2 rounded-xl text-sm font-medium ${showForm?'bg-gray-200 text-gray-700':'bg-blue-600 text-white'}`}>{showForm?'Cancelar':'+ Nueva'}</button>
+          <button onClick={()=>setShowForm(!showForm)} className={`px-3 py-2 rounded-xl text-sm font-medium ${showForm?'bg-gray-200 text-gray-700':'bg-blue-600 text-white'}`}>{showForm?'Cancelar':'+ Nueva Compra'}</button>
         </div>
       </div>
-      {msg&&<div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-xl px-4 py-3 mb-4 text-sm">{msg}</div>}
+      {msg&&<div className={`border rounded-xl px-4 py-3 mb-4 text-sm ${msg.includes('✅')?'bg-green-50 border-green-200 text-green-700':'bg-blue-50 border-blue-200 text-blue-700'}`}>{msg}</div>}
       {showForm&&(
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4 space-y-3">
           <h2 className="font-semibold text-gray-800">Nueva Compra</h2>
-          <div><label className="text-xs text-gray-500 mb-1 block">Proveedor *</label><input type="text" value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" required /></div>
+          <div><label className="text-xs text-gray-500 mb-1 block">Proveedor *</label><input type="text" value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="Nombre del proveedor" required/></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Fecha</label><input type="date" value={form.purchase_date} onChange={e=>setForm({...form,purchase_date:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Notas</label><input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" placeholder="Opcional" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Fecha</label><input type="date" value={form.purchase_date} onChange={e=>setForm({...form,purchase_date:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Notas</label><input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="Opcional"/></div>
           </div>
           <div>
-            <div className="flex justify-between items-center mb-2"><label className="text-xs text-gray-500">Productos</label><button type="button" onClick={addItem} className="text-xs text-blue-600 font-medium">+ Agregar</button></div>
+            <div className="flex justify-between items-center mb-2"><label className="text-xs text-gray-500">Productos</label><button type="button" onClick={addItem} className="text-xs text-blue-600 hover:text-blue-700">+ Añadir</button></div>
             {items.map((item,i)=>(
               <div key={i} className="flex gap-2 mb-2 items-center">
                 <select value={item.product_id} onChange={e=>updateItem(i,'product_id',e.target.value)} className="flex-1 border border-gray-200 rounded-xl p-2 text-xs">
                   <option value="">Producto</option>
                   {products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-                <input type="number" placeholder="Cant." value={item.quantity} onChange={e=>updateItem(i,'quantity',e.target.value)} className="w-16 border border-gray-200 rounded-xl p-2 text-xs" step="0.1" />
-                <input type="number" placeholder="EUR" value={item.unit_price} onChange={e=>updateItem(i,'unit_price',e.target.value)} className="w-16 border border-gray-200 rounded-xl p-2 text-xs" step="0.01" />
+                <input type="number" placeholder="Cant." value={item.quantity} onChange={e=>updateItem(i,'quantity',e.target.value)} className="w-16 border border-gray-200 rounded-xl p-2 text-xs" step="0.1"/>
+                <input type="number" placeholder="EUR" value={item.unit_price} onChange={e=>updateItem(i,'unit_price',e.target.value)} className="w-16 border border-gray-200 rounded-xl p-2 text-xs" step="0.01"/>
                 {items.length>1&&<button type="button" onClick={()=>removeItem(i)} className="text-red-400 text-lg">&times;</button>}
               </div>
             ))}
             <div className="text-right text-sm font-semibold text-gray-700">Total: {total.toFixed(2)} EUR</div>
           </div>
-          <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-medium">Registrar Compra</button>
+          <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-medium hover:bg-blue-700">Registrar Compra</button>
         </form>
       )}
       {loading?(
@@ -125,7 +136,7 @@ export default function ComprasPage() {
         <div className="text-center py-12 text-gray-400 text-sm">Sin compras registradas</div>
       ):purchases.map(p=>(
         <div key={p.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-3 overflow-hidden">
-          <button onClick={()=>setExpanded(expanded===p.id?null:p.id)} className="w-full p-4 text-left">
+          <button onClick={()=>setExpanded(expanded===p.id?null:p.id)} className="w-full p-4 text-left hover:bg-gray-50">
             <div className="flex justify-between items-start">
               <div><p className="font-semibold text-gray-900">{p.supplier||'Sin proveedor'}</p><p className="text-xs text-gray-400">{p.purchase_date}{p.notes?` - ${p.notes}`:''}</p></div>
               <div className="text-right"><p className="font-bold text-blue-600">{(p.total_cost||0).toFixed(2)} EUR</p><span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{p.status}</span></div>
